@@ -1,0 +1,62 @@
+name: xRules
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 22 * * *' # 6 AM (WITA)
+    - cron: '0 10 * * *' # 6 PM (WITA)
+
+jobs:
+  xrule:
+    runs-on: macos-latest
+
+    env:
+      REPO_NAME: ${{ github.repository }} 
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Setup ENV
+        run: |
+          brew update
+          brew install node
+          echo "BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> $GITHUB_ENV
+          echo "CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> $GITHUB_ENV
+          echo "REPO_NAME=${{ env.REPO_NAME }}" >> $GITHUB_ENV
+
+      - name: Setup Resources
+        run: |
+          git clone https://github.com/officialputuid/getgrass-bot
+          cd getgrass-bot
+          npm install
+          echo -e "${{ secrets.UID_LIST }}" > uid.txt
+          ${{ secrets.WGET_PROXIES }}
+          cat proxy-1.txt proxy-2.txt proxy-3.txt proxy-4.txt >> proxy.txt
+          rm -rf proxy-*.txt
+
+      - name: Notify Start
+        working-directory: getgrass-bot
+        run: |
+          USER_COUNT=$(wc -l < uid.txt | xargs)
+          PROXY_COUNT=$(wc -l < proxy.txt | xargs)
+          DATE_TIME=$(TZ='Asia/Makassar' date '+%Y-%m-%d %H:%M:%S %Z')
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ env.CHAT_ID }} \
+            -d text="[$DATE_TIME] Workflow getgrass-main has started. UID: $USER_COUNT and Proxies: $PROXY_COUNT. ($REPO_NAME)"
+
+      - name: Run getgrass
+        timeout-minutes: 348
+        working-directory: getgrass-bot
+        run: npm start
+
+      - name: Notify Completion
+        working-directory: getgrass-bot
+        if: always()
+        run: |
+          DATE_TIME=$(TZ='Asia/Makassar' date '+%Y-%m-%d %H:%M:%S %Z')
+          curl -s -X POST "https://api.telegram.org/bot${{ env.BOT_TOKEN }}/sendMessage" \
+            -d chat_id=${{ env.CHAT_ID }} \
+            -d text="[$DATE_TIME] Workflow getgrass-main has completed. ($REPO_NAME)"
